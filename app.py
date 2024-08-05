@@ -4,16 +4,18 @@ from flask_marshmallow import Marshmallow
 
 app = Flask(__name__)
 
-# Connect Flask API/app to database                    DBMS       DB_DRIVER  DB_USER  DB_PASS  URL     PORT DB_NAME
+# Connect Flask API/app to database BEFORE creating db object...  DBMS  DB_DRIVER  DB_USER  DB_PASS  URL  PORT DB_NAME
 app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql+psycopg2://apr_stds:123456@localhost:5432/t2w2"
 # ^^ can write either local host or ~~~127.0.0.1? ^^
 
-# create object:
+# create database object AFTER configuring app / connecting API to DB:
 db = SQLAlchemy(app)
+
+# Create Marshmallow object:
 ma = Marshmallow(app)
 
 
-# Create a general class/Model [MVC] of a table (this is how you define table):
+# Create a general class/Model [MVC] of a table (this is how you define a model/table):
 # no need to __init__ bc of inheritance:
 
 
@@ -31,26 +33,30 @@ class Product(db.Model):
     price = db.Column(db.Float)
     stock = db.Column(db.Integer)
 
+# ^^ up to this point (and also maybe more after? idk) we're working with DDL... "definition" language ^^
 
-# Create a schema (this is how you access table / fetch info from the DB):
+# Create a marshmallow schema to convert SQL to python (this is how you access above table / fetch info from the DB):
 
 
 class ProductSchema(ma.Schema):
     class Meta:
-        # Fields:
+        # Fields tuple:
         fields = ("id", "name", "description", "price", "stock")
 
 
-# There are two ways... 1) To handle multiple products:
+# Now need to create object of class ProductSchema. There are two ways... 1) To handle multiple/all tables?/products:
 products_schema = ProductSchema(many=True)
 
 # 2) To handle a single product:
 product_schema = ProductSchema()
 
 
-# CLI Commands - Custom
+# CLI Commands - Custom:
+# This is to enable typing "flask create" into the terminal (must be connected to correct db first, i.e. command prompt t2w2=#):
+# This is a controller/s (MVC)?:
 @app.cli.command("create")
 def create_tables():
+    # We've only create one table (Product) but in reality we'd have more:
     db.create_all()
     print("Create all the tables")
 
@@ -58,8 +64,8 @@ def create_tables():
 # Create another command to seed values to the table:
 @app.cli.command("seed")
 def seed_tables():
-    # Create a product object, there's two ways:
-    # 1:
+    # To create a product object, there's two ways:
+    # Option 1:
     product1 = Product(
         name="Fruits",
         description="Fresh Fruits",
@@ -67,22 +73,22 @@ def seed_tables():
         stock=100
     )
 
-    # 2:
+    # Option 2:
     product2 = Product()
     product2.name = "Vegetables"
     product2.description = "Fresh Vegetables"
     product2.price = 10.99
     product2.stock = 200
 
-    # Another way... could use this instead of the below:
+    # Another way... could use this instead of the below (adding all things at once):
     # products = [product1, product2]
     # db.session.add_all(products)
 
-    # Add to session:
+    # Analogous to Git... Add to session (adding specific things individually... maybe less elegant):
     db.session.add(product1)
     db.session.add(product2)
 
-    # Commit:
+    # Analogous to Git... Commit to session/database:
     db.session.commit()
 
     print("Tables seeded.")
@@ -98,42 +104,44 @@ def drop_tables():
 
 # Working with routes:
 # Define routes (if methods=[""] is unspecified, it defaults to GET method):
-
-
+# Static routing:
 @app.route("/products")
 def get_products():
     # Need to convert SQL/HTTP? requests to/with python, send to database, fetch, convert/translate outcome and display:
     # SELECT * FROM products;:
 
-    # stmt ~= statement:
+    # need to define a stmt (statement) that i'll be executing:
+    # it's a statement object that represents the query itself:
     stmt = db.select(Product)
 
-    # Multiple, not singular:
+    # to execute stmt, we need to define another variable to store result in? as scalar/s:
+    # Multiple "products" and "scalars", not singular:
     products_list = db.session.scalars(stmt)
-    # Serialisation
+    # Serialisation / and convert for python to understand using the "multiple products" version:
     data = products_schema.dump(products_list)
     return data
 
 
-# Dynamic routing:
-
-
-@app.route("/courses/<int:product_id>")
-# localhost/products/100
+# Orrrr Dynamic routing... use <>, the contents of which is gotten from the frontend:
+@app.route("/products/<int:product_id>")
+# e.g. localhost/products/100
 def get_product(product_id):
     # SELECT * FROM products WHERE id = product_id;:
+    # In SQLAlchemy, can also use filter() instead of filter_by():
     stmt = db.select(Product).filter_by(id=product_id)
+    # ^^ id is from backend; product_id is from frontend ^^
 
-    # Singular, not multiple:
+    # Execute stmt using scalar method/value; Singular "product" and "scalar", not multiple:
     product = db.session.scalar(stmt)
 
-    # converting from db object to python object?:
+    # converting from db object to python object:
     # if product exists:
     if product:
         data = product_schema.dump(product)
         return data
     else:
         return {"error": f"Product with id {product_id} does not exist"}, 404
+
 
 # RECAP:
 # /products, GET => getting all products
@@ -160,7 +168,7 @@ def add_product():
     return product_schema.dump(new_product), 201
 
 
-# UPDATE [both put and patch to avoid redundancy]:
+# The UPDATE request [both put and patch to avoid redundancy]:
 @app.route("/products/<int:product_id>", methods=["PUT", "PATCH"])
 def update_product(product_id):
     # find product from DB w/ the specific id, product_id:
@@ -186,7 +194,7 @@ def update_product(product_id):
     else:
         return {"error": f"Product with id {product_id} does not exist"}, 404
 
-# DELETE:
+# The DELETE request:
 
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
