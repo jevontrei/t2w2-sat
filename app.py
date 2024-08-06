@@ -127,7 +127,7 @@ def get_products():
 # e.g. localhost/products/100
 def get_product(product_id):
     # SELECT * FROM products WHERE id = product_id;:
-    # In SQLAlchemy, can also use filter() instead of filter_by():
+    # In SQLAlchemy, can also use filter() instead of filter_by(), both are kinda like WHERE in SQL (python also may have a "where" function: see DELETE request below):
     stmt = db.select(Product).filter_by(id=product_id)
     # ^^ id is from backend; product_id is from frontend ^^
 
@@ -151,7 +151,7 @@ def get_product(product_id):
 # /products/id, DELETE => Delete a specific product
 
 
-# ADD/CREATE:
+# ADD/CREATE a product to the database:
 @app.route("/products", methods=["POST"])
 def add_product():
     product_fields = request.get_json()
@@ -171,16 +171,17 @@ def add_product():
 # The UPDATE request [both put and patch to avoid redundancy]:
 @app.route("/products/<int:product_id>", methods=["PUT", "PATCH"])
 def update_product(product_id):
-    # find product from DB w/ the specific id, product_id:
+    # find the product from DB w/ the specific id, product_id:
     stmt = db.select(Product).filter_by(id=product_id)
 
-    # execute:
+    # execute stmt:
     product = db.session.scalar(stmt)
 
     # retrieve data from request body:
     body_data = request.get_json()
 
     # update [use if/else to generalise]:
+    # if product exists:
     if product:
         product.name = body_data.get("name") or product.name
         product.description = body_data.get(
@@ -188,26 +189,29 @@ def update_product(product_id):
         product.price = body_data.get("price") or product.price
         product.stock = body_data.get("stock") or product.stock
 
-        # Commit [don't need to add, it's already in the session]:
+        # Commit [don't need to add for put/patch, it's already in the session]:
         db.session.commit()
         return product_schema.dump(product)
     else:
         return {"error": f"Product with id {product_id} does not exist"}, 404
 
-# The DELETE request:
+# The DELETE request (don't need anything in JSON body in Insomnia):
 
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
 def delete_product(product_id):
+    # define statement:
     stmt = db.select(Product).filter_by(id=product_id)
-    # OR:
+    # OR (check this, not sure if where() exists like this):
     # stmt = db.select(Product).where(Product.id == product_id)
-    # Execute:
+
+    # Execute stmt:
     product = db.session.scalar(stmt)
 
     # if product exists:
     if product:
         db.session.delete(product)
+        # still need to commit too:
         db.session.commit()
         return {"message": f"Product with id {product_id} has been deleted."}
     else:
